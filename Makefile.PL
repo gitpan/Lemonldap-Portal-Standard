@@ -4,7 +4,7 @@ use ExtUtils::MakeMaker;
 WriteMakefile(
     NAME              => 'Lemonldap::Portal::Standard',
     VERSION_FROM      => 'Standard.pm', # finds $VERSION
-    PREREQ_PM         => {}, # e.g., Module::Name => 1.1
+    PREREQ_PM         => {Net::LDAP => '0.0'}, # e.g., Module::Name => 1.1
     ($] >= 5.005 ?     ## Add these new keywords supported since 5.005
       (ABSTRACT_FROM  => 'Standard.pm', # retrieve abstract from module
        AUTHOR         => 'Eric German <germanlinux@yahoo.fr>') : ()),

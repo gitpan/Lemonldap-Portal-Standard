@@ -1,4 +1,4 @@
-Lemonldap/Portal/Standard version 0.01
+Lemonldap/Portal/Standard version 0.02
 ======================================
 NAME
     Lemonldap::Portal::Standard - Perl extension for the Lemonldap SSO
@@ -114,7 +114,7 @@ To install this module type the following:
 
 DEPENDENCIES
 
-NONES
+Net::LDAP ( perl LDAP API) 
 
 COPYRIGHT AND LICENCE
 

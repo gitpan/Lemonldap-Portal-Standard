@@ -3,4 +3,6 @@ Revision history for Perl extension Lemonldap::Portal::Standard.
 0.01  Sun Nov 21 21:23:24 2004
 	- original version; created by h2xs 1.22 with options
 		-XAn Lemonldap::Portal::Standard
-
+0.02  12 03 2004 
+     -test prerequite in Makefile.PL
+     -the port is not deleted now in rederection 

@@ -2,8 +2,9 @@
 package Lemonldap::Portal::Standard;
 use strict;
 use warnings;
+use Net::LDAP;
 use Data::Dumper;
-our $VERSION = '0.01';
+our $VERSION = '0.02';
 sub new
  {
 my $class =shift;
@@ -56,7 +57,7 @@ sub  __controlUrlOrigin {
 if ( defined ( $urlc) )
  {
    $urldc = decode_base64($urlc);
-   $urldc =~ s#:\d+/#/#;   # Suppress  port number in  URL
+#  $urldc =~ s#:\d+/#/#;   # Suppress  port number in  URL
    $urlc  = encode_base64($urldc,'');
    $self->{'urlc'} =$urlc;
    $self->{'urldc'}=$urldc;
