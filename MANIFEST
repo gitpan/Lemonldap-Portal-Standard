@@ -1,5 +1,6 @@
 Changes
 examples/accnew.pl
+examples/accueil_obj.pl
 Makefile.PL
 MANIFEST
 META.yml			Module meta-data (added by MakeMaker)
