@@ -5,7 +5,7 @@ use warnings;
 use Net::LDAP;
 use MIME::Base64;
 use Data::Dumper;
-our $VERSION = '0.03';
+our $VERSION = '0.04';
 sub new
  {
 my $class =shift;
@@ -134,7 +134,7 @@ sub func_bind {
     my $dn =shift;
     my  $password =shift;
 my $mesg ;
-if ($dn and $password) 
+if ($dn and defined($password)) 
           {  #named bind  
               $mesg = $ldap->bind( $dn, password => $password );
            }  else  {  # anonymous bind

@@ -11,4 +11,6 @@ Revision history for Perl extension Lemonldap::Portal::Standard.
      -Add getAllRedirection method
      -more examples giving.
      -test MIME::Base64 prerequite in Makefile.PL
-     -add use MIME::Base64  
+     -add use MIME::Base64 
+0.04 13 Oct 2005
+     -bug in the bind process with null password   
