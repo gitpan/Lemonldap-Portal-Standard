@@ -1,9 +1,17 @@
 Changes
 examples/accnew.pl
+examples/accueil.pl
 examples/accueil_obj.pl
+lib/Lemonldap/Portal/login.html
+lib/Lemonldap/Portal/Login.pm
+lib/Lemonldap/Portal/LoginDAC.pm
+lib/Lemonldap/Portal/LoginFake.pm
+lib/Lemonldap/Portal/LoginFakeLDAP.pm
+lib/Lemonldap/Portal/LoginPOST.pm
+lib/Lemonldap/Portal/LogoutDAC.pm
+lib/Lemonldap/Portal/Standard.pm
 Makefile.PL
 MANIFEST
 META.yml			Module meta-data (added by MakeMaker)
 README
-Standard.pm
 t/1.t

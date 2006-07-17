@@ -3,9 +3,11 @@ package Lemonldap::Portal::Standard;
 use strict;
 use warnings;
 use Net::LDAP;
+use IO::Socket;
 use MIME::Base64;
 use Data::Dumper;
-our $VERSION = '0.04';
+use Net::LDAP::Constant qw(LDAP_SUCCESS LDAP_INVALID_CREDENTIALS LDAP_OPERATIONS_ERROR);
+our $VERSION = '3.0.0';
 sub new
  {
 my $class =shift;
@@ -15,12 +17,12 @@ my $self= bless {
 $self->{controlUrlOrigin}=\&__controlUrlOrigin;
 $self->{controlTimeOut}=\&__controlTimeOut;
 $self->{controlSyntax}=\&__controlSyntax;
+$self->{controlIP}=\&__controlIP;
 $self->{bind}=\&__bind;
 $self->{formateUser}=\&__none;
 $self->{formateFilter}=\&__Filter;
 $self->{formateBaseLDAP}=\&__none;
 $self->{contactServer}=\&__contactServer;
-$self->{bind}=\&__bind;
 $self->{search}=\&__ldapsearch;
 $self->{setSessionInfo}=\&__session;
 $self->{unbind}=\&__unbind;
@@ -30,10 +32,12 @@ my $mess= {1 => 'Your connection has expired; You must to be authentified once a
 	     3 => 'Wrong directory manager account or password' ,
 	     4  => 'not found in directory',
 	     5  => 'wrong credentials' ,
-	     };  
+	     6  => 'Your IP has changed. You must to be authentified once again',     
+	};  
 $self->{msg}=$mess;
 foreach (keys %args) {
-    $self->{$_} = $args{$_};
+
+	$self->{$_} = $args{$_};
 }
   
 return $self;
@@ -81,6 +85,26 @@ if( defined( $operation ) and
    $self->{'error'} =1 ;
 }
 }
+
+##------------------------------------------------------------------
+## method controlIP
+## This method looks at param cgi 'op'
+## if op eq 'i' (like IP) the handler couldn't retrieve the
+## storage session from id session
+##------------------------------------------------------------------
+sub __controlIP{
+    my $self = shift;
+    my $operation = $self->{param}->{'op'};
+    $self->{operation}= $operation;
+if( defined( $operation ) and
+             $operation eq 'i' )
+{
+   $self->{'message'} = $self->{msg}{6} ;
+#Penser a trouver un code erreur.
+   $self->{'error'} =6 ;
+}
+}
+
 ##------------------------------------------------------------------
 ## method controlSyntax 
 ## This method looks at param cgi 'identifant' and 'secret'  
@@ -121,33 +145,29 @@ if( ! defined( $user ) and
 
 sub __contactServer{
     my $self= shift;
-      unless ($self->{ldap}) {
-    my $ldap = Net::LDAP->new( $self->{server},
+    unless ($self->{ldap}) {
+    	my $ldap = Net::LDAP->new( $self->{server},
                               port => $self->{port},
                               onerror => undef,
                             ) or die('Net::LDAP->new: '.$@);
-    $self->{ldap}= $ldap;
+	$self->{ldap}= $ldap;
+    }
 }
-}
+
 sub func_bind {
     my $ldap= shift;
     my $dn =shift;
     my  $password =shift;
-my $mesg ;
-if ($dn and defined($password)) 
-          {  #named bind  
-              $mesg = $ldap->bind( $dn, password => $password );
-           }  else  {  # anonymous bind
-               $mesg = $ldap->bind();
-           } 
+    my $mesg ;
+    if ($dn and defined($password)){ 
+       #named bind  
+       $mesg = $ldap->bind( $dn, password => $password );
+    }  else  {  
+       # anonymous bind
+       $mesg = $ldap->bind();
+    } 
    
-my $me=  $mesg->code();
-if( $mesg->code() != 0 )
-   {
-      $ldap = undef;
-      return ("wrong password"); 
-      } 
-    return ;
+    return $mesg->code();
 }
         
 
@@ -158,9 +178,16 @@ if( $mesg->code() != 0 )
 sub __Filter {
     my $self=shift;
     my $user=$self->{user};
-    my $filtre="uid=$user";
-    $self->{filter}=$filtre;
+    my $searchattributes = $self->{Attributes};
+    my $filtre;
+    if (defined($searchattributes)){
+        $filtre=$searchattributes."=".$user;
+    }else{
+        $filtre="uid=$user";
+    }
+$self->{filter}=$filtre;
 }
+
 ##---------------------------------------------------------------------------
 ## Connection  on  server LDAP with manager credential
 ## in order to extract user infos
@@ -168,44 +195,76 @@ sub __Filter {
 
 sub __bind {
     my $self=shift;
+    __contactServer ($self);
 ##---------------------------------------------------------------------------
 ## Authentification
 ##---------------------------------------------------------------------------
 
- my $d =$self->{ldap}; 
- my $p=$self->{DnManager} ;
- my $r=$self->{passwdManager} ;
- 
-    my $mesg = &func_bind( $self->{ldap},$self->{DnManager},$self->{passwordManager} );
+   my $mesg = &func_bind( $self->{ldap},$self->{DnManager},$self->{passwordManager} );
    
-   if( $mesg )
-   {
-  $self->{'message'} = $self->{sg}{3};
-  $self->{'error'} =3 ;
-   
+   if( $mesg == LDAP_INVALID_CREDENTIALS ) {
+       $self->{'message'} = $self->{msg}{3};
+       $self->{'error'} =3 ;
+   }
+   elsif ( $mesg == LDAP_OPERATIONS_ERROR ) {
+       $self->{ldap} = undef;
+       __contactServer ($self);
+       my $mesg = &func_bind( $self->{ldap},$self->{DnManager},$self->{passwordManager} );
+       if ( $mesg == LDAP_OPERATIONS_ERROR ) {
+          $self->{'message'} = $self->{msg}{8};
+          $self->{'error'} =8 ;
+          $self->{ldap} = undef;
+       }
+       
+   }
+   elsif ( $mesg ) {
+          $self->{'message'} = $self->{msg}{8};
+          $self->{'error'} =8 ;
+          $self->{ldap} = undef;
    }
 }
+
 sub __ldapsearch {
     my $self=shift;
+    __contactServer ($self);
     my $ldap=$self->{ldap};
     my $filter= $self->{filter};
     my $base=$self->{branch};
-
-    my $mesg = $ldap->search(
-                          base   => $base,
-                          scope  => 'sub',
-                          filter => $filter,
+  my @tbase;
+@tbase =  @{$self->{'base'}} if $self->{'base'};
+push @tbase, $self->{branch} unless  @tbase; 
+    my $mesg;	
+    foreach $base ( @tbase ){
+    	$mesg = $ldap->search(
+                         base   => $base,
+                         scope  => 'sub',
+                         filter => $filter,
+		         attrs => $self->{'attrs'},
                         );
-   die $mesg->error() if( $mesg->code() != 0 );
+
+	if ( $mesg->code() == LDAP_OPERATIONS_ERROR) {
+          $self->{ldap} = undef;
+	}
+
+   	die $mesg->error() if( $mesg->code() != 0 );
+	if ( $mesg->count() > 0 ){
+		last;
+	}	   
+   }
+   if ($mesg->count() > 1 ){
+        $self->{'message'} = $self->{msg}{7};
+        $self->{'error'} = 7 ;
+ 	return;
+   }
    my $retour=$mesg->entry(0);
    my $identifiantCopy=$self->{user};    
-    if( ! defined( $retour )) {
-  $self->{'message'} = "$identifiantCopy :".$self->{msg}{4};
-  $self->{'error'} = 4 ;
-  return;  
-  }
-$self->{entry}= $retour;
-return;
+   if( ! defined( $retour )) {
+      $self->{'message'} = "$identifiantCopy :".$self->{msg}{4};
+      $self->{'error'} = 4 ;
+      return;  
+   }
+   $self->{entry}= $retour;
+   return;
 }
 ##==============================================================================
 ## function _session  
@@ -237,19 +296,23 @@ sub __unbind
 }
 sub __credentials {
     my $self = shift;
+    __contactServer ($self);
    ##---------------------------------------------------------------------------
    ## Authentification
    ##---------------------------------------------------------------------------
    my $mesg = &func_bind( $self->{ldap},$self->{dn},$self->{password} );
    
-   if( $mesg )
-   {
-  $self->{'message'} = $self->{msg}{5};
-  $self->{'error'} =5 ;
-   
+   if( $mesg == LDAP_OPERATIONS_ERROR  ) {
+          $self->{'message'} = $self->{msg}{8};
+	  $self->{'error'} = 8 ;     
+          $self->{ldap} = undef;
    }
 
- 
+   elsif( $mesg == LDAP_INVALID_CREDENTIALS  ) {
+          # bad password
+	  $self->{'message'} = $self->{msg}{5};
+	  $self->{'error'} = 5 ;
+   }
 }
 sub message {
 my $self= shift;
@@ -270,6 +333,10 @@ return ($self->{urlc},$self->{urldc});
 sub user {
 my $self= shift;
 return ($self->{user});
+}
+sub secret {
+my $self= shift;
+return ($self->{password});
 }
 sub error {
 my $self= shift;
@@ -302,25 +369,30 @@ sub process {
  &{$self->{controlUrlOrigin}}($self);# no error avaiable in this step 
  &{$self->{controlTimeOut}}($self);
    return ($self) if $self->{'error'} ;  ## it's not necessary to go next.    
+ &{$self->{controlIP}}($self);
+   return ($self) if $self->{'error'} ;  ## it's not necessary to go next.
  &{$self->{controlSyntax}}($self);
    return ($self) if $self->{'error'} ;  ## it's not necessary to go next.    
  &{$self->{formateUser}}($self);# no error avaiable in this step 
  &{$self->{formateFilter}}($self);# no error avaiable in this step 
  &{$self->{formateBaseLDAP}}($self);# no error avaiable in this step 
- &{$self->{contactServer}}($self);# can die if the server if unreachable: critical error
+# &{$self->{contactServer}}($self);# can die if the server if unreachable: critical error
  &{$self->{bind}}($self);   
-  return($self) if $self->{'error'} ;  ## it's not necessary to go next.    
+ if ($self->{'error'}){   ## it's not necessary to go next.    
+    &{$self->{unbind}}($self);
+    $self->{ldap} = undef;
+    return($self);
+  }
  &{$self->{search}}($self) ; 
-if ($self->{'error'}) 
-        {
-  ## it's not necessary to go next.    
+ if ($self->{'error'}){
+   ## it's not necessary to go next.    
    &{$self->{unbind}}($self);
+   $self->{ldap} = undef;
    return($self);
-        } 
+ } 
  &{$self->{setSessionInfo}}($self);# no error avaiable in this step 
  &{$self->{credentials}}($self); 
- &{$self->{unbind}}($self);# no error avaiable in this step 
-return($self)  
+ return($self);  
 }
 
 1;
@@ -454,6 +526,10 @@ MacEachern - O'REILLY
 =item Eric German, E<lt>germanlinux@yahoo.frE<gt>
 
 =item Xavier Guimard, E<lt>x.guimard@free.frE<gt>
+
+=item Habib ZITOUNI  E<lt>zitouni.habib@gmail.comE<gt>
+
+=item Hamza AISSAT  E<lt>asthamza@hotmail.frE<gt>
 
 =back
 

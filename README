@@ -1,5 +1,3 @@
-Lemonldap/Portal/Standard version 0.02
-======================================
 NAME
     Lemonldap::Portal::Standard - Perl extension for the Lemonldap SSO
     system
@@ -16,7 +14,7 @@ SYNOPSIS
 
      my $message = '';
      my %params =Vars;
-     my $stack_user= Lemonldap::Portal::Standard->new('formateUser' => \&my_method);
+     my $stack_user=Lemonldap::Portal::Standard->new('formateUser' => \&my_method);
      my $urlc;
      my $urldc; 
      $retour=$stack_user->process(param =>  \%params,           
@@ -66,7 +64,8 @@ DESCRIPTION
 
 METHODS
   Standard->new();
-    my $stack_user= Standard->new('standard_method' => \&my_method);
+    my $stack_user= Lemonldap::Portal::Standard->new('standard_method' =>
+    \&my_method);
 
   process();
      $retour=$stack_user->process(param =>  \%params,           
@@ -91,6 +90,12 @@ METHODS
 
   sub infoSession ()
       return a reference of hash of session 
+
+  getRedirection ()
+      return a plaintext url of redirection
+ 
+  (urlc,urldc) :getAllRedirection ()
+      return a  list of encoded url and decoded  url of redirection
  
 SEE ALSO
     Lemonldap(3), Lemonldap::Handler::Intrusion(3)
@@ -98,34 +103,37 @@ SEE ALSO
     http://lemonldap.sourceforge.net/
 
     "Writing Apache Modules with Perl and C" by Lincoln Stein & Doug
-    MacEachern - O'REILLYLemonldap::Portal::Standard - Perl extension for the Lemonldap SSO
-    system
+    MacEachern - O'REILLY
 
-    see the examples directory. 
+     See the examples directory
 
-INSTALLATION
+AUTHORS
+    Eric German, <germanlinux@yahoo.fr>
+    Xavier Guimard, <x.guimard@free.fr>
+    Habib ZITOUNI <zitouni.habib@gmail.com>
+    Hamza AISSAT <asthamza@hotmail.fr>
 
-To install this module type the following:
+COPYRIGHT AND LICENSE
+    Copyright (C) 2004 by Eric German & Xavier Guimard
 
-   perl Makefile.PL
-   make
-   make test
-   make install
+    Lemonldap originaly written by Eric german who decided to publish him in
+    2003 under the terms of the GNU General Public License version 2.
 
-DEPENDENCIES
+    This package is under the GNU General Public License, Version 2.
+    The primary copyright holder is Eric German.
+    Portions are copyrighted under the same license as Perl itself.
+    Portions are copyrighted by Doug MacEachern and Lincoln Stein. This
+    library is under the GNU General Public License, Version 2.
+      This program is free software; you can redistribute it and/or modify
+      it under the terms of the GNU General Public License as published by
+      the Free Software Foundation; version 2 dated June, 1991.
 
-Net::LDAP ( perl LDAP API) 
+      This program is distributed in the hope that it will be useful,
+      but WITHOUT ANY WARRANTY; without even the implied warranty of
+      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+      GNU General Public License for more details.
 
-COPYRIGHT AND LICENCE
+      A copy of the GNU General Public License is available in the source tree;
+      if not, write to the Free Software Foundation, Inc.,
+      59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
-Copyright (C) 2004 by Eric German E<amp> Xavier Guimard
-
-Lemonldap originaly written by Eric german who decided to publish him in 2003
-under the terms of the GNU General Public License version 2.
-This library is under the GNU General Public License, Version 2.
-
-The primary copyright holder is Eric German.
-
-Portions are copyrighted under the same license as Perl itself.
-
-Portions are copyrighted by Doug MacEachern and Lincoln Stein.
