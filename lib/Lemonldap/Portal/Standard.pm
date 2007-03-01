@@ -7,7 +7,7 @@ use IO::Socket;
 use MIME::Base64;
 use Data::Dumper;
 use Net::LDAP::Constant qw(LDAP_SUCCESS LDAP_INVALID_CREDENTIALS LDAP_OPERATIONS_ERROR);
-our $VERSION = '3.0.0';
+our $VERSION = '3.1.0';
 sub new
  {
 my $class =shift;
@@ -66,7 +66,10 @@ if ( defined ( $urlc) )
    $urlc  = encode_base64($urldc,'');
    $self->{'urlc'} =$urlc;
    $self->{'urldc'}=$urldc;
- }
+ } else {  
+   undef($self->{'urlc'});
+   undef($self->{'urldc'});
+ } 
 }
 ##------------------------------------------------------------------
 ## method controlTimeOut 
@@ -85,6 +88,25 @@ if( defined( $operation ) and
    $self->{'error'} =1 ;
 }
 }
+
+#------------------------------------------------------------------
+## method controlCache
+## This method looks at param cgi 'op'
+## if op eq 'm' (like memcached) the handler couldn't retrieve the
+## storage session from id session
+##------------------------------------------------------------------
+sub __controlCache {
+    my $self = shift;
+    my $operation = $self->{param}->{'op'};
+    $self->{operation}= $operation;
+if( defined( $operation ) and
+             $operation eq 'm' )
+{
+   $self->{'message'} = $self->{msg}{9} ;
+   $self->{'error'} =10 ;
+}
+}
+
 
 ##------------------------------------------------------------------
 ## method controlIP
@@ -125,6 +147,7 @@ if( defined( $user ) or
                   $password      eq '' )
    {
   $self->{'message'} = $self->{msg}{2};
+  $self->{log}->info("User uid=$user -> \"login\" and \"password \" must not be empty");
   $self->{'error'} =2 ;
    }
 
@@ -149,7 +172,7 @@ sub __contactServer{
     	my $ldap = Net::LDAP->new( $self->{server},
                               port => $self->{port},
                               onerror => undef,
-                            ) or die('Net::LDAP->new: '.$@);
+                             ) or $self->{log}->info('Net::LDAP->new: '.$@);
 	$self->{ldap}= $ldap;
     }
 }
@@ -177,17 +200,19 @@ sub func_bind {
 ##---------------------------------------------------------------------------
 sub __Filter {
     my $self=shift;
-    my $user=$self->{user};
-    my $searchattributes = $self->{Attributes};
-    my $filtre;
-    if (defined($searchattributes)){
-        $filtre=$searchattributes."=".$user;
-    }else{
-        $filtre="uid=$user";
+    if ( ! defined $self->{filter} ) {
+        my $user=$self->{user};
+        my $filterattribute = $self->{Attributes};
+        my $filtre;
+        if (defined($filterattribute)){
+                $filtre=$filterattribute."=".$user;
+        }else{
+                $filtre="uid=$user";
+        }
+        $self->{filter}=$filtre;
     }
-$self->{filter}=$filtre;
+        $self->{log}->debug("LDAP Search Filter : " . $self->{filter} );
 }
-
 ##---------------------------------------------------------------------------
 ## Connection  on  server LDAP with manager credential
 ## in order to extract user infos
@@ -196,6 +221,15 @@ $self->{filter}=$filtre;
 sub __bind {
     my $self=shift;
     __contactServer ($self);
+    if ( ! defined $self->{ldap} ) {
+       $self->{'message'} = $self->{msg}{8};
+       $self->{'error'} =8 ;
+       return;
+    }
+
+
+
+
 ##---------------------------------------------------------------------------
 ## Authentification
 ##---------------------------------------------------------------------------
@@ -203,6 +237,7 @@ sub __bind {
    my $mesg = &func_bind( $self->{ldap},$self->{DnManager},$self->{passwordManager} );
    
    if( $mesg == LDAP_INVALID_CREDENTIALS ) {
+       $self->{log}->info("Authentication Failed for DnManager -> Invalid Credentials : " . $self->{DnManager}  );
        $self->{'message'} = $self->{msg}{3};
        $self->{'error'} =3 ;
    }
@@ -211,6 +246,7 @@ sub __bind {
        __contactServer ($self);
        my $mesg = &func_bind( $self->{ldap},$self->{DnManager},$self->{passwordManager} );
        if ( $mesg == LDAP_OPERATIONS_ERROR ) {
+          $self->{log}->info("Authentication Failed for DnManager -> LDAP Operations Error : " . $self->{DnManager}  );
           $self->{'message'} = $self->{msg}{8};
           $self->{'error'} =8 ;
           $self->{ldap} = undef;
@@ -227,6 +263,13 @@ sub __bind {
 sub __ldapsearch {
     my $self=shift;
     __contactServer ($self);
+    if ( ! defined $self->{ldap} ) {
+       $self->{'message'} = $self->{msg}{8};
+       $self->{'error'} =8 ;
+       return;
+    }
+
+
     my $ldap=$self->{ldap};
     my $filter= $self->{filter};
     my $base=$self->{branch};
@@ -235,6 +278,11 @@ sub __ldapsearch {
 push @tbase, $self->{branch} unless  @tbase; 
     my $mesg;	
     foreach $base ( @tbase ){
+        $self->{log}->debug("LDAP Search Operation :");
+        $self->{log}->debug("    Search Base : " . $base);
+        $self->{log}->debug("    Search Filter : " . $filter);
+        $self->{log}->debug("    Search Attributes : " . $self->{'attrs'} );
+
     	$mesg = $ldap->search(
                          base   => $base,
                          scope  => 'sub',
@@ -243,10 +291,18 @@ push @tbase, $self->{branch} unless  @tbase;
                         );
 
 	if ( $mesg->code() == LDAP_OPERATIONS_ERROR) {
+          $self->{log}->info("Authentication Failed for DnManager -> LDAP Operations Error : " . $self->{DnManager}  );
           $self->{ldap} = undef;
 	}
+        if( $mesg->code() != 0 ) {
+   	    $self->{log}->info ($mesg->error);
+            $self->{'message'} = $self->{msg}{8};
+            $self->{'error'} =8 ;
+            $self->{'ldap'} =undef ;
+	    return;
 
-   	die $mesg->error() if( $mesg->code() != 0 );
+        }
+
 	if ( $mesg->count() > 0 ){
 		last;
 	}	   
@@ -256,10 +312,11 @@ push @tbase, $self->{branch} unless  @tbase;
         $self->{'error'} = 7 ;
  	return;
    }
-   my $retour=$mesg->entry(0);
+    my $retour=$mesg->entry(0);
    my $identifiantCopy=$self->{user};    
    if( ! defined( $retour )) {
-      $self->{'message'} = "$identifiantCopy :".$self->{msg}{4};
+      $self->{log}->info("Authentification Failure : $identifiantCopy hasn\'nt been found in the LDAP Server");
+     $self->{'message'} = "$identifiantCopy :".$self->{msg}{4};
       $self->{'error'} = 4 ;
       return;  
    }
@@ -297,12 +354,19 @@ sub __unbind
 sub __credentials {
     my $self = shift;
     __contactServer ($self);
+    if ( ! defined $self->{ldap} ) {
+       $self->{'message'} = $self->{msg}{8};
+       $self->{'error'} =8 ;
+       return;
+    }
+
    ##---------------------------------------------------------------------------
    ## Authentification
    ##---------------------------------------------------------------------------
    my $mesg = &func_bind( $self->{ldap},$self->{dn},$self->{password} );
    
    if( $mesg == LDAP_OPERATIONS_ERROR  ) {
+	  $self->{log}->info("Authentication Failed -> LDAP Operations Error for : " . $self->{dn}  );
           $self->{'message'} = $self->{msg}{8};
 	  $self->{'error'} = 8 ;     
           $self->{ldap} = undef;
@@ -310,8 +374,12 @@ sub __credentials {
 
    elsif( $mesg == LDAP_INVALID_CREDENTIALS  ) {
           # bad password
+	  $self->{log}->info("Authentication Failed -> Invalid Password for : " . $self->{dn}  );
 	  $self->{'message'} = $self->{msg}{5};
 	  $self->{'error'} = 5 ;
+   }
+      elsif ($mesg == LDAP_SUCCESS ) {
+	  $self->{log}->info("Authentication Successful for : " . $self->{dn} );
    }
 }
 sub message {
@@ -370,6 +438,8 @@ sub process {
  &{$self->{controlTimeOut}}($self);
    return ($self) if $self->{'error'} ;  ## it's not necessary to go next.    
  &{$self->{controlIP}}($self);
+   return ($self) if $self->{'error'} ;  ## it's not necessary to go next.
+&{$self->{controlCache}}($self);
    return ($self) if $self->{'error'} ;  ## it's not necessary to go next.
  &{$self->{controlSyntax}}($self);
    return ($self) if $self->{'error'} ;  ## it's not necessary to go next.    

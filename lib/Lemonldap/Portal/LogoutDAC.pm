@@ -3,32 +3,22 @@ use strict;
 use warnings;
 use Apache2::Const;
 use Data::Dumper;
-use Template;
 use CGI ':cgi-lib';
 use Apache2::ServerRec();
-our $VERSION = '3.0.0';
+use MIME::Base64;
+our $VERSION = '3.1.0';
 
 sub handler {	
 
 	my $r = shift;
-	my $Template = Template->new('ABSOLUTE' => 1);
-	my $LogoutPage = $r->dir_config('LemonldapLogoutPage');
-	my $domain = $r->dir_config('LemonldapDomain');
-	my $cookie = $r->dir_config('LemonldapCookie'); 
-my $Data = {'message' => "Votre deconnexion est effective. Veuillez fermer la fenetre"};
-
-                print CGI::header();
-                $Template->process( $LogoutPage , $Data ) or die($Template->error());
+	my $domain = $r->dir_config('Domain');
+	my $cookie = $r->dir_config('Cookie'); 
+	my $Portal = $r->dir_config('Portal');
+	my $PostLogoutURL = $r->dir_config('PostLogoutURL');
 
 
-
-
-my $entete = $r->headers_in();
+	my $entete = $r->headers_in();
 	my $Cookies = $entete->{'Cookie'};		
-#	my %input = Vars ;
-#	my $LogoutPage = $r->dir_config('LemonldapLogoutPage');
-#	my $domain = $input{'domain'};
-#	my $cookie = $input{'cookie'};
 			
 	my $LogoutCookie = CGI::cookie(
             	    -name   => $cookie,
@@ -37,13 +27,34 @@ my $entete = $r->headers_in();
                	    -path   => '/',
 		    -expires => 'now'
                	);  		
-	$r->headers_out->add( 'Set-Cookie' => $LogoutCookie );
-#	my $Data = {'message' => "Votre deconnexion est effective. Veuillez fermer la fenetre"};
+	
+	my $test = $r->construct_url();
 
-  #              print CGI::header();
- #                $Template->process( $LogoutPage , $Data ) or die($Template->error());
+        #ATTENTION : ne valide que les http et https
+        my $prot;
+
+        if ($test =~ /^https/){
+                $prot = "https://";
+        }else{
+                $prot = "http://"
+        }
+	my $url_portail;
+	if (defined($PostLogoutURL)){
+		$url_portail = $PostLogoutURL;
+        }else{
+		$url_portail = $prot.$r->headers_in->{Host};
+
+	}
+
+
+	
+        my  $url_portail_encode = encode_base64($url_portail,"");
+        $r->err_headers_out->add(Pragma => 'no-cache');
+        $r->headers_out->add(Location =>$Portal."?op=c&url=$url_portail_encode");
+        $r->err_headers_out->add(Connection => 'close');
+	$r->err_headers_out->add( 'Set-Cookie' => $LogoutCookie );
  	
 	
-	return Apache2::Const::DONE ;		
+	return REDIRECT ;		
 }
 1;

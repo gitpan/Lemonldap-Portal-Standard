@@ -2,10 +2,11 @@ package Lemonldap::Portal::LoginDAC;
 	
 use strict;
 use warnings;
-
-	
+   
+use Apache2::Const;	
 use Lemonldap::Config::Parameters;
 use Lemonldap::Portal::Standard;
+use Lemonldap::Portal::AccessPolicy;
 use Apache2::Const;
 use Data::Dumper;
 use Template;
@@ -15,16 +16,16 @@ use Apache::Session::Memorycached;
 use MIME::Base64;
 use Encode qw(encode);
 use Sys::Hostname;
-our $VERSION = '3.0.0';
+our $VERSION = '3.1.0';
 
 my $client_addr;
 my $SessCacheRefreshPeriod;
 my $Stack_User;
 my $LdapUserAttributes;
-my $Major;
+my $Org;
 my $AccessPolicy;
-#my $MyApplicationXmlFile; 
-my $Ldap_Search_Attributes;
+my $Ldap_Filter_Attribute;
+my $MyAttribute;
 my $MyDomain; 
 my $LoginPage; 
 my $RedirectPage; 
@@ -56,56 +57,52 @@ my $Messages = { 1 => 'Votre connexion a expir&eacute; vous devez vous authentif
                  7 => 'Serveral Entries found on ldap server for this user',
                  8 => 'Bad connection to ldap server',
                 };
-sub default {
-	my $Entry = shift;
-	my $Session = shift;
-	my @ProfilApplicatif = $Entry->get_value('profilapplicatif');
-        foreach my $Ligne (@ProfilApplicatif){
-                my ($Arg1, $Arg2, $Arg3) = ( $Ligne =~ /^(.+?);(.+?);(.+)/ );
-                $Arg1 =~ s/ //g;
-                $Session->{$Major}{lc($Arg1)} = $Arg2;
-        }
-}
-
-
-
-
-
+   
+   
+   
 sub My_Session {
-	my $self = shift;
-	my $AccessRule = shift;
-	my %Session;
-	my $Entry = $self->{entry};
-	$Session{dn} = $Entry->dn();
-	$self->{dn} = $Entry->dn();		
-	&{$self->{AccessPolicy}}($Entry,\%Session);
+   	my $self = shift;
+   	
+   	my %Session;
+   	my $Entry = $self->{entry};
+   	$Session{dn} = $Entry->dn();
+   	$self->{dn} = $Entry->dn();		
+   	my $res = $self->{AccessPolicy};
+	if ($res eq "default"){
+                Lemonldap::Portal::AccessPolicy->$res($Entry,\%Session,$Org,$MyAttribute);
+        }else{
+                Lemonldap::Portal::AccessPolicy->$res($Entry,\%Session,$Org);
+        }
+
+   
+   
 	if (defined($client_addr)){
-		$Session{'clientIPAdress'}= $client_addr;
-	}
-        if (defined($SessCacheRefreshPeriod)){
+   		$Session{'clientIPAdress'}= $client_addr;
+   	}
+         if (defined($SessCacheRefreshPeriod)){
                 $Session{'SessExpTime'}= time() + $SessCacheRefreshPeriod ;
         }
-  	
-	$self->{infosession} = \%Session;
-}		
-		
+   	
+   	$self->{infosession} = \%Session;
+}  		
+   		
 sub handler {	
-	my $r = shift;
- 	my $log = $r->log;	
-
-	my $connexion = $r->dir_config();
-	my $conf_httpd = &Lemonldap::Config::Initparam::init_param_httpd($log,$connexion);
-	my $conf_xml = {};
- 	if ( defined $conf_httpd->{CONFIGFILE} ){
+   	my $r = shift;
+   	my $log = $r->log;	
+   
+   	my $connexion = $r->dir_config();
+   	my $conf_httpd = &Lemonldap::Config::Initparam::init_param_httpd($log,$connexion);
+   	my $conf_xml = {};
+   	if ( defined $conf_httpd->{CONFIGFILE} ){
                          $conf_xml  = &Lemonldap::Config::Initparam::init_param_xml($conf_httpd);
         }
-	my $Conf = &Lemonldap::Config::Initparam::merge($conf_httpd, $conf_xml);
+   	my $Conf = &Lemonldap::Config::Initparam::merge($conf_httpd, $conf_xml);
         $MyDomain = lc($Conf->{DOMAIN});
         $LoginPage = $Conf->{LOGINPAGE};
         $RedirectPage = $Conf->{REDIRECTPAGE};
-        $Major = $Conf->{ORGANIZATION};
-        if ( ! defined($Major) ){
-            $Major = "authz_headers";
+        $Org = $Conf->{ORGANIZATION};
+        if ( ! defined($Org) ){
+            $Org = "authz_headers";
         }
         $Login_Url = $Conf->{PORTAL};
 	$AccessPolicy = $Conf->{ACCESSPOLICY};
@@ -115,7 +112,7 @@ sub handler {
 
         $IpCheck = $Conf->{CLIENTIPCHECK};
         $SessCacheRefreshPeriod = $Conf->{SESSCACHEREFRESHPERIOD};
-        $Ldap_Search_Attributes = $Conf->{LDAPSEARCHATTRIBUTES};
+        $Ldap_Filter_Attribute = $Conf->{LDAPFILTERATTRIBUTE};
 	$Ldap_Server = $Conf->{LDAP_SERVER};
         $Ldap_Branch_People = $Conf->{LDAP_BRANCH_PEOPLE};
         $Ldap_Dn_Manager = $Conf->{DNMANAGER};
@@ -127,9 +124,17 @@ sub handler {
         $Encryptionkey = $Conf->{ENCRYPTIONKEY};
         $Menu = $Conf->{MENU};
         $LdapUserAttributes = $Conf->{LDAPUSERATTRIBUTES};
-        if (defined($LdapUserAttributes)){
+        if ($Ldap_Pass_Manager =~ /^\{CODED\}/ ){
+		$Ldap_Pass_Manager = `/dactools/pass-crypt 1 $Ldap_Pass_Manager`;
+		chomp($Ldap_Pass_Manager);
+		
+	} 
+
+
+	if (defined($LdapUserAttributes)){
               @attrs = split(/\s+/,$LdapUserAttributes);
-        }else{
+       	      $MyAttribute = $attrs[0];
+	 }else{
               @attrs = ();
         }
 
@@ -139,11 +144,13 @@ sub handler {
 	if ( $Stack_User->{'AlreadyCreated'} ){
 		undef $Stack_User->{'error'};		
 	}else{
-		$Stack_User = Lemonldap::Portal::Standard->new('msg' => $Messages, 'setSessionInfo' => \&My_Session, 'attrs' => \@attrs, 'base' => \@base ,'AccessPolicy' => \&$AccessPolicy);
+
+
+		$Stack_User = Lemonldap::Portal::Standard->new('msg' => $Messages, 'setSessionInfo' => \&My_Session, 'attrs' => \@attrs, 'base' => \@base ,'AccessPolicy' => $AccessPolicy, 'log' => $log);
 		$Stack_User->{'AlreadyCreated'} = "true";
 		$DacHostname = hostname();
 	}
-		
+	
 	my $UrlCode;
 	my $UrlDecode;
 	my $Erreur;
@@ -158,7 +165,9 @@ sub handler {
 					   'DnManager' => $Ldap_Dn_Manager,
 					   'passwordManager' => $Ldap_Pass_Manager,
 					   'branch' => $Ldap_Branch_People,
-					   'Attributes' => $Ldap_Search_Attributes  
+					   'Attributes' => $Ldap_Filter_Attribute,  
+					   'filter' => undef,
+					   'log' => $log
 					);
 	my $Message = '';
 	if ( $Retour ){
@@ -166,28 +175,36 @@ sub handler {
 		$Erreur = $Retour->error;
 	}	
 	if ( $Erreur ) {
-		if ( $Erreur == 3 ){
-			# Wrong directory manager account or password
-			$log->error("LemonLDAP: ".$Message);
-			return Apache2::Const::SERVER_ERROR ;		
-		}
-		if ( $Erreur == 4 || $Erreur == 5 ){
-			# If bad login or password, refresh the login page with no information
-			$log->info("LemonLDAP: ".$Message);
-			$Message = '';
+		if ( $Erreur == 1 ){
+#			$log->info("LemonLDAP: Session expired for user ¨- ".$Retour->user );
 		}	
+		if ( $Erreur == 6 ){
+#			my $conn = $r->connection();
+#                       my $addr = $conn->remote_ip();
+#                       $log->info("LemonLDAP: IP changes in $addr for user -> ".$Retour->user);
+                }
+		if ( $Erreur == 7 ){
+                        $log->info("LemonLDAP: ".$Message." : ".$Retour->user);
+                }
 	
 		
 		# Login Page sending
 		my $Identifiant = $Retour->user;
 		($UrlCode, $UrlDecode) = $Stack_User->getAllRedirection;
-		$Data = { 'urlc' => $UrlCode,
+		$Data = {    'urlc' => $UrlCode,
 			     'urldc' => $UrlDecode,
 			     'message' => $Message,
 			     'identifiant' => $Identifiant,
 			     'ip' => "DAC : ".$DacHostname
 			    };
-		
+		 if ( $Erreur == 8 ){
+                       
+		       # bad connection to ldap server
+                       # reafficher la page de login sans les champs de saisie et les boutons pour l'authentification
+                       $Data->{debutcommentaire} = "<!--";
+                       $Data->{fincommentaire} = "-->";
+                 }
+	
 		print CGI::header();
 		$Template->process( $LoginPage , $Data ) or die($Template->error());
 	}	
@@ -199,6 +216,9 @@ sub handler {
 		if (defined($SessCacheRefreshPeriod) && defined($InactivityTimeout)){
                         $MemcachedServer->{timeout} = $SessCacheRefreshPeriod + $InactivityTimeout;
                 }
+		
+		#No insertion in Memcached before untie
+		$MemcachedServer->{updateOnly} = 1;
 		
 		my %Session;
 		tie %Session, 'Apache::Session::Memorycached', undef, $MemcachedServer;	
@@ -222,6 +242,15 @@ sub handler {
 			
 		untie %Session;
 		
+		my %session ;
+   		tie %session, 'Apache::Session::Memorycached', $Session_Id,$MemcachedServer;		
+	
+		if (keys(%session) < 3){
+			$log->error("SERVER MEMCACHED UNREACHABLE. PLEASE CHECK IF YOUR SERVER IS ON OR IF YOUR CONFIGURATION FILE IS CORRECT");
+			return Apache2::Const::SERVER_ERROR ;				
+		}
+	
+		untie %session;
 		# Cookie creation
  		my $PathCookie = "/";
 		
@@ -266,3 +295,80 @@ sub handler {
 }	
 
 1;
+
+__END__
+
+=head1 NAME
+
+Lemonldap::Portal::Login - Login module for the lemonldap open source SSO system
+
+=head1 SYNOPSIS
+
+In the lemonldap SSO system, Lemonldap::Portal::Login is the module which is reponsible ofdisplaying
+un html authentication page to a user in order to authenticate him and create a session for fim. So
+after that, this user can access his applications.
+
+=head1 CONFIGURATION
+
+In order to get Lemonldap::Portal::Login working, you must make some configuration with Apache. Here is
+an example illustrating a lemonldap login virtual host :
+
+Listen 443
+<VirtualHost *:443>
+        ServerName testdac.mysite.mydomain
+
+        #LogLevel debug
+
+        # https activation
+        SSLEngine on
+        SSLCertificateFile XXXXXXX.crt
+        SSLCertificateKeyFile XXXXXXX.key
+
+        # Loading Lemonldap::Portal::Login module
+        PerlModule Lemonldap::Portal::Login
+        <Location /DACLogin>
+                # let execute under mod_perl
+                SetHandler perl-script
+                # execute in the response generation phase of apache request handling
+                PerlResponseHandler Lemonldap::Portal::Login
+                # the domain wich we control
+                PerlSetVar Domain mysite.mydomain
+                # the name of the organization
+                PerlSetVar Organization MyOrganization
+                # wich ldap attribut of the user we need
+                PerlSetVar LdapUserAttributes "profilApplicatif"
+                # wich attribut is the login of the user
+                PerlSetVar LdapFilterAttribute uid
+                # name of the lemonldap cookie
+                PerlSetVar Cookie lemondgi
+                # make a control based on ip adresse before using the lemonldap cookie
+                PerlSetVar ClientIPCheck 1
+                # Timeout inactivity berfore the session expires
+                PerlSetVar InactivityTimeout 900
+                # ldap server
+                PerlSetVar Ldap_Server xxxxx
+                # dn manager of the ldap server
+                PerlSetVar DnManager xxxxxxxxxxxxxx
+                # password of the dn manager
+                PerlSetVar PasswordManager xxxxxxxx
+                # branch where to do the ldap search
+                PerlSetVar Ldap_Branch_People xxxxx
+                # memcached local and central server
+                PerlSetVar SessionParams "( local => ['localhost:11211'] , servers => [10.1.1.1:11211'])"
+                # template of the login page
+                PerlSetVar LoginPage /usr/local/apache2/htdocs/templates/login.thtml
+        </Location>
+
+</VirtualHost>
+
+=head1 SEE ALSO
+Lemonldap::Handlers::Generic4a2, Lemonldap::Portal::Standard
+http://lemonldap.sourceforge.net/
+
+=head1 AUTHORS
+Eric GERMAN <germanlinux@yahoo.fr>
+Hamza AISSAT <asthamza@hotmail.fr>
+Habib ZITOUNI <zitouni.habib@gmail.com>
+Olivier THOMAS <olivier.tho@gmail.com>
+Ali POUYA <Ali.Pouya@dgi.finances.gouv.fr>
+Shervin AHMADI <Shervin.Ahmadi@dgi.finances.gouv.fr>

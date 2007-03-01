@@ -15,7 +15,7 @@ use Apache::Session::Memorycached;
 use MIME::Base64;
 use Encode qw(encode);
 use Sys::Hostname;
-our $VERSION = '3.0.0';
+our $VERSION = '3.1.0';
 
 my $client_addr;
 my $SessCacheRefreshPeriod;

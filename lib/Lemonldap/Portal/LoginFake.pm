@@ -18,7 +18,7 @@ use Encode qw(encode);
 use Lemonldap::Portal::Session;
 use Net::LDAP::Entry;
 use IO::File;
-our $VERSION = '3.0.0';
+our $VERSION = '3.1.0';
 
 my $client_addr;
 my $sessCacheRefreshPeriod;
