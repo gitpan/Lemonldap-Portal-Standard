@@ -2,6 +2,9 @@ Changes
 examples/accnew.pl
 examples/accueil.pl
 examples/accueil_obj.pl
+examples/application_example1.xml
+examples/httpd_example1.conf
+examples/login.html
 lib/Lemonldap/Portal/login.html
 lib/Lemonldap/Portal/Login.pm
 lib/Lemonldap/Portal/LoginDAC.pm

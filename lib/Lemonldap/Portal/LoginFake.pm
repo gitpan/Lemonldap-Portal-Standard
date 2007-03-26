@@ -6,8 +6,11 @@ use warnings;
 	
 use Lemonldap::Config::Parameters;
 use Lemonldap::Portal::Standard;
-use Apache2::Const qw(FORBIDDEN OK SERVER_ERROR);
-
+use Apache2::Const qw(DONE FORBIDDEN OK SERVER_ERROR REDIRECT);
+use Apache2::Log();
+use APR::Table;
+use Apache2::RequestRec ();
+use Apache2::ServerRec();
 use Data::Dumper;
 use Template;
 use URI::Escape;
@@ -18,7 +21,7 @@ use Encode qw(encode);
 use Lemonldap::Portal::Session;
 use Net::LDAP::Entry;
 use IO::File;
-our $VERSION = '3.1.0';
+our $VERSION = '3.1.1';
 
 my $client_addr;
 my $sessCacheRefreshPeriod;
@@ -26,7 +29,7 @@ my $log;
 my $dump;
 my $html;
 my $Stack_User;
-my $UserAttributes;
+#my $UserAttributes;
 my $Major;
 my $MyApplicationXmlFile; 
 my $MyDomain; 
@@ -36,8 +39,8 @@ my $Parameters;
 my $Conf_Domain; 
 my $Login_Url; 
 my $Cookie_Name; 
-my $ipCheck; 
-my $inactivityTimeout; 
+#my $ipCheck; 
+#my $inactivityTimeout; 
 my $Ldap_Server; 
 my $Ldap_Branch_People; 
 my $Ldap_Dn_Manager; 
@@ -49,8 +52,8 @@ my @base;
 my $MemcachedServer;
 my $CookieName;  
 my $line_session;
-my $InactivityTimeout; 
-my $Encryptionkey; 
+#my $InactivityTimeout; 
+#my $Encryptionkey; 
 my $page_html;
 my $Menu; 
 my $Messages = { 1 => 'Votre connexion a expir&eacute; vous devez vous authentifier de nouveau',
@@ -134,31 +137,12 @@ sub handler {
                     $html = <$file>;
                     close $file;
                       }
-	        $ipCheck = $Conf_Domain->{ClientIPCheck};
-		
-		   
-		 $inactivityTimeout = $Conf_Domain->{InactivityTimeout};
-	        $sessCacheRefreshPeriod = $Conf_Domain->{SessCacheRefreshPeriod};
+
         	$Ldap_Server = $Conf_Domain->{ldap_server};
 	        $Ldap_Branch_People = $Conf_Domain->{ldap_branch_people};
 	        $Ldap_Dn_Manager = $Conf_Domain->{DnManager};
 	        $Ldap_Pass_Manager = $Conf_Domain->{passwordManager};
 	        $Ldap_Port = $Conf_Domain->{ldap_port};
-
-        	#<Recuperation de l'adresse IP cliente>
-	        if ($ipCheck){
-        	        my $connection = $r->connection();
-                	$client_addr = $connection->remote_ip();
-        	}
-	        #</Recuperation de l'adresse IP cliente>
-
-	        $UserAttributes = $r->dir_config('LdapUserAttributes');
-        	if (defined($r->dir_config('LdapUserAttributes'))){
-	         @attrs = split(/\s+/,$r->dir_config('LdapUserAttributes'));
-        	}else{
-	         @attrs = ();
-        	}
-
         	$Ldap_Search_Bases = $Ldap_Branch_People;
 	        if (defined($r->dir_config('LdapSearchBases'))){
         	        $Ldap_Search_Bases = $r->dir_config('LdapSearchBases').":".$Ldap_Search_Bases;
@@ -167,21 +151,18 @@ sub handler {
 		
 		$MemcachedServer = $Parameters->formateLineHash($Parameters->findParagraph('session','memcached')->{SessionParams});
 		$CookieName = $Conf_Domain->{Cookie};
-		$InactivityTimeout = $Conf_Domain->{InactivityTimeout};
-		$Encryptionkey = $Conf_Domain->{Encryptionkey};
-		$Menu = $Conf_Domain->{'Menu'};
 
  $line_session = $Conf_Domain->{DefinitionSession};
 
 		$Stack_User = Lemonldap::Portal::Standard->new(
 			'msg' => $Messages, 
                         'setSessionInfo' => \&My_Session,
-                                              'controlUrlOrigin' => \&my_none,
                       'controlTimeOut' => \&my_none,
                    # 'controlSyntax' => \&my_none,
                       'controlIP'    =>  \&my_none,
 	              'bind'     =>  \&my_none,
-                      'formateFilter' =>\&my_none,
+                      'controlCache' => \&my_none,
+		       'formateFilter' =>\&my_none,
                       'formateBaseLDAP' =>\&my_none,
                       'contactServer'  =>\&my_none,
                       'search'  =>\&my_entry,
@@ -196,25 +177,24 @@ sub handler {
 	my $UrlCode;
 	my $UrlDecode;
 	my $Erreur;
-
-	my %Params ;
+	my %Params = Vars;
         my $buf;
 # copy POST data, if any
-    if ( $r->method eq 'POST' ) {
-        my $len = $r->header_in('Content-length');
-        $r->read( $buf, $len );
-      my @arams= split '&',$buf;
-       for (@arams) {
-           (my $cle,my $val) = /(.+?)=(.+)/;       
-      $Params{$cle}= $val if $cle; 
-} 
-}	
+#	if ( $r->method eq 'POST' ) {
+#	my $entete =$r->headers_in();
+#        my $len = $entete->{'Content-length'};
+#        $r->read( $buf, $len );
+#      my @arams= split '&',$buf;
+#       for (@arams) {
+#           (my $cle,my $val) = /(.+?)=(.+)/;       
+#      $Params{$cle}= $val if $cle; 
+#} 
+#}	
         
         my $l= Dumper (\%Params);
 	my $Retour = $Stack_User->process( 'param' => \%Params, 
 					  );
 	my $Message = '';
-
 	if ( $Retour ){
 		$Message = $Retour->message;
 		$Erreur = $Retour->error;
@@ -254,7 +234,7 @@ sub handler {
 #			    };
 
         $r->content_type('text/html');
-        $r->send_http_header;
+        $r->print;
 
 $r->print($html_ok);
 
@@ -267,10 +247,6 @@ $r->print($html_ok);
 		my $MyHashSession = $Retour->infoSession;	
                 my $l = Dumper($MyHashSession) ;
 
-		if (defined($sessCacheRefreshPeriod) && defined($inactivityTimeout)){
-                        $MemcachedServer->{timeout} = $sessCacheRefreshPeriod + $inactivityTimeout;
-                }
-	
 		my %Session;
 		tie %Session, 'Apache::Session::Memorycached', undef, $MemcachedServer;	
 		foreach (keys %{$MyHashSession}){
@@ -300,30 +276,13 @@ $r->print($html_ok);
 		# Habib Timeout
 		#Positionnement de la valeur time_end
 	$dump =$Retour->{dump};	
-		
-		my $val_test;
-
-		if(defined($InactivityTimeout) && $InactivityTimeout != 0 ){
-        		my $time_end = time() + $InactivityTimeout;
-	        	if (defined($Encryptionkey)){
-        	        	my $timeout_key = $Encryptionkey;
-	                	my $cipher = new Crypt::CBC(-key => $timeout_key,-cipher => 'Blowfish',-iv => 'lemonlda',-header => 'none');
-        		        $time_end = $cipher->encrypt_hex($time_end);
-                	}
-        		#Chaine utilise comme separateur entre l'id de session et le time_end
-	       	 	#concatenation des deux valeurs
-			my $separator = "_";
-			$val_test = $Session_Id.$separator.$time_end;
-		}else{
-		        $val_test = $Session_Id;
-		}
- 		
-		#$log->info("Set-Cookie: -name   => $CookieName  -value  => $val_test -domain => ".".$MyDomain -path   => $PathCookie");
+		my $dotdomain= ".".$MyDomain;
+		$log->info("Set-Cookie: -name   => $CookieName  -value  => $Session_Id -domain => ".".$dotdomain -path   => $PathCookie");
         
 		my $LemonldapCookie = CGI::cookie(
                 	    -name   => $CookieName,
-	                    -value  => $val_test,
-        	            -domain => ".".$MyDomain,
+	                    -value  => $Session_Id,
+        	            -domain => $dotdomain,
                 	    -path   => $PathCookie,
                 	);
 
@@ -331,18 +290,23 @@ $r->print($html_ok);
 		$UrlDecode = $Menu if ( $UrlDecode eq '' );
   if ($UrlDecode) {
 
+#$UrlDecode =~ s/priv//g;
+       print CGI::header( -Refresh => '0; URL='.$UrlDecode, -cookie => $LemonldapCookie );
+
+               return DONE;		
+
   }  else {	  
 	      	$r->content_type('text/html');
         $r->headers_out->add( 'Set-Cookie' => $LemonldapCookie );
 
-        $r->send_http_header;
+        $r->print;
 $r->print(<<END1);
 <html>
 <head><title>lemonldap websso</title></head>
 <body>
 <h1>Hello in lemonldap websso 'world</h1>
 Congratulation your are enter in the  lemonldap'world
-<p>Your id_session is :$val_test<p>
+<p>Your id_session is :$Session_Id<p>
 <p> Your session have been created  like this :<br>
 $l<p>
 Your session stored on memcached server is like this :<br>
