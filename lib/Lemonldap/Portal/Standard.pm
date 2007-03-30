@@ -9,7 +9,7 @@ use MIME::Base64;
 use Data::Dumper;
 use Net::LDAP::Constant qw(LDAP_SUCCESS LDAP_INVALID_CREDENTIALS LDAP_OPERATIONS_ERROR);
 use Crypt::SaltedHash;
-our $VERSION = '3.1.1';
+our $VERSION = '3.1.2';
 #--------------------------------------------------------------------------------------------------
 sub new {
      my $class =shift;
@@ -151,12 +151,12 @@ sub __controlSyntax {
 
      $self->{'user'}	 = $user;
      my $password	 = $self->{param}->{'secret'};
-    if ( $self->{param}->{'password'} ) {
+    if ( defined ($self->{param}->{'password'}) ) {
         $password = $self->{param}->{'password'};
         $self->{CAS} = 'CASREQUESTED';
     }
-    if ( $self->{param}->{'it'} ) {
-        $self->{it}  = $self->{param}->{'it'};
+    if ( $self->{param}->{'lt'} ) {
+        $self->{it}  = $self->{param}->{'lt'};
         $self->{CAS} = 'CASREQUESTED';
     }
 
@@ -187,7 +187,7 @@ sub __controlSyntax {
 sub __contactServer {
      my $self= shift;
      unless ($self->{ldap}) {
-	  my $ldap = Net::LDAP->new( $self->{server}, port => $self->{port},onerror => undef, ) or $self->{log}->info('Net::LDAP->new: '.$@);
+	  my $ldap = Net::LDAP->new( $self->{server}, port => $self->{port},onerror => undef, ) or print STDERR ('Net::LDAP->new: '.$@);
 	  $self->{ldap}= $ldap;
 	  if ($self->{openldap} && $ldap){
 	       &{$self->{bind}}($self);
@@ -304,10 +304,10 @@ sub __ldapsearch {
 	  $self->{log}->info("    Search Filter : " . $filter);
 	  $self->{log}->info("    Search Attributes : " . $self->{'attrs'} );
       }   else {
-        print STDERR ("LDAP Search Operation :");
-	print STDERR ("    Search Base : " . $base);
-	print STDERR ("    Search Filter : " . $filter);
-	print STDERR ("    Search Attributes : " . $self->{'attrs'} );
+        print STDERR ("LDAP Search Operation :\n");
+	print STDERR ("    Search Base : " . $base."\n");
+	print STDERR ("    Search Filter : " . $filter."\n");
+	print STDERR ("    Search Attributes : " . $self->{'attrs'}."\n" );
       }   
 	  $mesg = $ldap->search(   base	     => $base,
 				   scope     => 'sub',
