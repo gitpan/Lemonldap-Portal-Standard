@@ -13,4 +13,7 @@ Revision history for Perl extension Lemonldap::Portal::Standard.
      -test MIME::Base64 prerequite in Makefile.PL
      -add use MIME::Base64 
 0.04 13 Oct 2005
-     -bug in the bind process with null password   
+     -bug in the bind process with null password  
+3.2.0 19 Apr 2007
+     - bug in log display
+ 

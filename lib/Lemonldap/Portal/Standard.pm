@@ -9,7 +9,7 @@ use MIME::Base64;
 use Data::Dumper;
 use Net::LDAP::Constant qw(LDAP_SUCCESS LDAP_INVALID_CREDENTIALS LDAP_OPERATIONS_ERROR);
 use Crypt::SaltedHash;
-our $VERSION = '3.1.2';
+our $VERSION = '3.2.0';
 #--------------------------------------------------------------------------------------------------
 sub new {
      my $class =shift;
@@ -228,7 +228,7 @@ sub __Filter {
      if ($self->{log} ) {
     $self->{log}->info("LDAP Search Filter : " . $self->{filter} );
     } else { 
-	print STDERR ("LDAP Search Filter : " . $self->{filter} );
+	print STDERR ("LDAP Search Filter : " . $self->{filter}."\n" );
     }
 }
 #--------------------------------------------------------------------------------------------------
@@ -353,7 +353,7 @@ print STDERR ("Authentication Failed for DnManager -> LDAP Operations Error : " 
 	  $self->{'message'} = "$identifiantCopy :".$self->{msg}{4};
 	  if ($self->{log}) {
 	      $self->{log}->notice("Authentification Failed : $identifiantCopy hasn\'nt been found in the LDAP Server");  }
-	  else { print STDERR e("Authentification Failed : $identifiantCopy hasn\'nt been found in the LDAP Server"); }
+	  else { print STDERR ("Authentification Failed : $identifiantCopy hasn\'nt been found in the LDAP Server"); }
 	  $self->{'error'} = 4 ;
 	  return;  
      }
@@ -697,13 +697,11 @@ MacEachern - O'REILLY
 
 =item Eric German, E<lt>germanlinux@yahoo.frE<gt>
 
-=item Xavier Guimard, E<lt>x.guimard@free.frE<gt>
-
 =back
 
 =head1 COPYRIGHT AND LICENSE
 
-Copyright (C) 2004 by Eric German E<amp> Xavier Guimard
+Copyright (C) 2004 by Eric German
 
 Lemonldap originaly written by Eric german who decided to publish him in 2003
 under the terms of the GNU General Public License version 2.
