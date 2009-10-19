@@ -9,7 +9,7 @@ use MIME::Base64;
 use Data::Dumper;
 use Net::LDAP::Constant qw(LDAP_SUCCESS LDAP_INVALID_CREDENTIALS LDAP_OPERATIONS_ERROR);
 use Crypt::SaltedHash;
-our $VERSION = '3.2.0';
+our $VERSION = '3.2.1';
 #--------------------------------------------------------------------------------------------------
 sub new {
      my $class =shift;
@@ -30,12 +30,12 @@ sub new {
      $self->{setSessionInfo}	   =\&__session;
      $self->{unbind}		   =\&__unbind;
      $self->{credentials}	   =\&__credentials;
-     my $mess= {    1 => 'Votre connection a expiré. Vous devez vous authentifier de nouveau.',
+     my $mess= {    1 => 'Votre connection a expirï¿½. Vous devez vous authentifier de nouveau.',
 		    2 => 'Les champs \'login\' et \'mot de passe \' doivent etre remplis',
 		    3 => 'L\'identifiant ou le mot de passe administrateur est incorrect' ,
 		    4  => 'Recherche LDAP infructueuse',
 		    5  => 'wrong credentials' ,
-		    6  => 'Votre adresse IP a changé, vous devez vous authentifier de nouveau',     
+		    6  => 'Votre adresse IP a changï¿½, vous devez vous authentifier de nouveau',     
 		    9 => 'Service Indisponible.<br>Le serveur de cache est injoignable, veuillez signaler ce probl&egrave;me &agrave; votre administrateur r&eacute;seau.'
 	       };  
 
@@ -382,7 +382,10 @@ sub __session {
 #--------------------------------------------------------------------------------------------------
 sub __unbind {
     my $self=shift;
-    $self->{ldap}->unbind if $self->{ldap};
+    if ($self->{ldap}) {
+                $self->{ldap}->unbind;
+	       $self->{'ldap'}	   = undef ;
+          }
 }
 #--------------------------------------------------------------------------------------------------
 ## Function credentials
@@ -563,7 +566,9 @@ sub process {
 	  return($self);
      } 
      &{$self->{setSessionInfo}}($self);	     # no error avaiable in this step 
+     &{$self->{unbind}}($self);
      &{$self->{credentials}}($self); 
+     &{$self->{unbind}}($self);
      return($self);  
 }
 1;
